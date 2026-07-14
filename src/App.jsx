@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LogIn, LogOut, FileText, Package, Activity, Plus, Trash2, Download, Database, PlusCircle } from 'lucide-react';
+import { LogIn, LogOut, FileText, Package, Activity, Plus, Trash2, Download, Database, PlusCircle, Clock } from 'lucide-react';
 
 // --- AUTHENTICATION MOCK DATA ---
 const USERS = [
@@ -9,8 +9,21 @@ const USERS = [
   { id: 4, name: 'Shailesh Rathod', password: '1234' }
 ];
 
-// Backend API URL (Using your Live Render URL!)
+// Backend API URL (Your Live Render URL)
 const API_URL = 'https://sisecam-backend.onrender.com/api';
+
+const getLocalDatetime = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
+
+const getCurrentShift = () => {
+  const hour = new Date().getHours();
+  if (hour >= 7 && hour < 15) return 'A Shift (7 AM - 3 PM)';
+  if (hour >= 15 && hour < 23) return 'B Shift (3 PM - 11 PM)';
+  return 'C Shift (11 PM - 7 AM)';
+};
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -22,7 +35,6 @@ export default function App() {
   const [inventoryLogs, setInventoryLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch data from Node.js Backend on load
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -183,6 +195,8 @@ function LoginScreen({ onLogin }) {
 // ==========================================
 function OPDForm({ inventory, dispenserName, refreshData }) {
   const [formData, setFormData] = useState({
+    recordDate: getLocalDatetime(),
+    shift: getCurrentShift(),
     patientName: '',
     empType: 'Company',
     sapId: '',
@@ -231,6 +245,7 @@ function OPDForm({ inventory, dispenserName, refreshData }) {
       const payload = {
         dispenser: dispenserName,
         ...formData,
+        recordDate: new Date(formData.recordDate).toISOString(), // Ensure standard format
         medicines: medicinesGiven
           .filter(m => m.drugId)
           .map(m => {
@@ -251,7 +266,13 @@ function OPDForm({ inventory, dispenserName, refreshData }) {
       }
 
       setMessage('✅ Cloud Saved: OPD Record Saved & Inventory Deducted!');
-      setFormData({ patientName: '', empType: 'Company', sapId: '', contractorName: '', symptoms: '' });
+      
+      // Reset form
+      setFormData({ 
+        recordDate: getLocalDatetime(),
+        shift: getCurrentShift(),
+        patientName: '', empType: 'Company', sapId: '', contractorName: '', symptoms: '' 
+      });
       setMedicinesGiven([{ drugId: '', qty: 1 }]);
       await refreshData();
       
@@ -275,6 +296,38 @@ function OPDForm({ inventory, dispenserName, refreshData }) {
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+          
+          {/* Date and Time */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
+              <Clock className="w-4 h-4 text-blue-600" /> Date & Time of Visit
+            </label>
+            <input 
+              type="datetime-local" 
+              required 
+              value={formData.recordDate} 
+              onChange={e => setFormData({...formData, recordDate: e.target.value})} 
+              className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+            />
+          </div>
+
+          {/* Shift */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
+              Company Shift
+            </label>
+            <select 
+              value={formData.shift} 
+              onChange={e => setFormData({...formData, shift: e.target.value})} 
+              className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="A Shift (7 AM - 3 PM)">A Shift (7 AM - 3 PM)</option>
+              <option value="B Shift (3 PM - 11 PM)">B Shift (3 PM - 11 PM)</option>
+              <option value="C Shift (11 PM - 7 AM)">C Shift (11 PM - 7 AM)</option>
+              <option value="General Shift">General Shift</option>
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1">Patient Name *</label>
             <input type="text" required value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -306,6 +359,7 @@ function OPDForm({ inventory, dispenserName, refreshData }) {
           </div>
         </div>
 
+        {/* Medicines */}
         <div>
           <div className="flex justify-between items-center mb-3">
             <label className="block text-sm font-semibold text-slate-700">Medicines Dispensed</label>
@@ -532,13 +586,19 @@ function Reports({ opdRecords, inventory, inventoryLogs, refreshData }) {
   const consumptionData = useMemo(() => {
     const usage = {};
     filteredRecords.forEach(record => {
-      record.medicines.forEach(med => {
-        if (usage[med.name]) {
-          usage[med.name] += med.qty;
-        } else {
-          usage[med.name] = med.qty;
-        }
-      });
+      let meds = record.medicines;
+      if (typeof meds === 'string') {
+        try { meds = JSON.parse(meds); } catch (e) { meds = []; }
+      }
+      if (meds && Array.isArray(meds)) {
+        meds.forEach(med => {
+          if (usage[med.name]) {
+            usage[med.name] += med.qty;
+          } else {
+            usage[med.name] = med.qty;
+          }
+        });
+      }
     });
     return Object.keys(usage).map(name => ({
       name,
@@ -563,12 +623,17 @@ function Reports({ opdRecords, inventory, inventoryLogs, refreshData }) {
   };
 
   const handleDownloadOPD = () => {
-    const headers = ['Date', 'Time', 'Patient Name', 'Type', 'ID/Contractor', 'Symptoms', 'Medicines Dispensed', 'Dispenser'];
+    const headers = ['Date', 'Time', 'Shift', 'Patient Name', 'Type', 'ID/Contractor', 'Symptoms', 'Medicines Dispensed', 'Dispenser'];
     const rows = filteredRecords.map(r => {
       const d = new Date(r.date);
-      const medsString = r.medicines.map(m => `${m.name} (${m.qty})`).join(' + ');
+      let meds = r.medicines;
+      if (typeof meds === 'string') {
+        try { meds = JSON.parse(meds); } catch (e) { meds = []; }
+      }
+      const medsString = meds && Array.isArray(meds) ? meds.map(m => `${m.name} (${m.qty})`).join(' + ') : '';
+      
       return [
-        d.toLocaleDateString(), d.toLocaleTimeString(), r.patient_name, r.emp_type,
+        d.toLocaleDateString(), d.toLocaleTimeString(), r.shift || 'N/A', r.patient_name, r.emp_type,
         r.emp_type === 'Company' ? r.sap_id : r.contractor_name,
         r.symptoms, medsString, r.dispenser
       ];
@@ -646,7 +711,6 @@ function Reports({ opdRecords, inventory, inventoryLogs, refreshData }) {
                   <th className="p-2 border-b">Date & Time</th>
                   <th className="p-2 border-b">Shift</th>
                   <th className="p-2 border-b">Patient</th>
-                  <th className="p-2 border-b">Meds Given</th>
                   <th className="p-2 border-b text-right">Delete</th>
                 </tr>
               </thead>
@@ -661,7 +725,6 @@ function Reports({ opdRecords, inventory, inventoryLogs, refreshData }) {
                     <td className="p-2 font-medium">
                       {r.patient_name} <br/><span className="text-[10px] text-slate-500">{r.emp_type}</span>
                     </td>
-                    <td className="p-2 text-slate-600">{r.medicines.map(m => `${m.name}(${m.qty})`).join(', ')}</td>
                     <td className="p-2 text-right">
                       <button 
                         onClick={() => handleDeleteOPDRecord(r.id, r.patient_name)}
