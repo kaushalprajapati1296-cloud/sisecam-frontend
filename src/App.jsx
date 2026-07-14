@@ -9,7 +9,7 @@ const USERS = [
   { id: 4, name: 'Shailesh Rathod', password: '1234' }
 ];
 
-// Backend API URL (Running on localhost:5000 right now)
+// Backend API URL (Using your Live Render URL!)
 const API_URL = 'https://sisecam-backend.onrender.com/api';
 
 export default function App() {
@@ -19,7 +19,7 @@ export default function App() {
   // Postgres Database State
   const [inventory, setInventory] = useState([]);
   const [opdRecords, setOpdRecords] = useState([]);
-  const [inventoryLogs, setInventoryLogs] = useState([]); // NEW: State for restock logs
+  const [inventoryLogs, setInventoryLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch data from Node.js Backend on load
@@ -29,7 +29,7 @@ export default function App() {
       const [invRes, opdRes, logsRes] = await Promise.all([
         fetch(`${API_URL}/inventory`),
         fetch(`${API_URL}/opd`),
-        fetch(`${API_URL}/inventory_logs`) // NEW: Fetching logs
+        fetch(`${API_URL}/inventory_logs`) 
       ]);
       
       const invData = await invRes.json();
@@ -61,7 +61,7 @@ export default function App() {
       <header className="bg-blue-900 text-white p-4 shadow-md flex justify-between items-center">
         <div className="flex items-center gap-3">
           <Database className="w-8 h-8 text-blue-300" />
-          <h1 className="text-2xl font-bold">Sisecam OHC (Postgres)</h1>
+          <h1 className="text-2xl font-bold">Sisecam OHC Cloud</h1>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm bg-blue-800 px-3 py-1 rounded-full border border-blue-700">
@@ -96,18 +96,17 @@ export default function App() {
         ))}
       </div>
 
-      {}
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
         {loading ? (
           <div className="flex justify-center items-center h-64 text-blue-600">
             <Activity className="w-8 h-8 animate-spin" />
-            <span className="ml-2 font-semibold">Connecting to Database...</span>
+            <span className="ml-2 font-semibold">Syncing with Cloud...</span>
           </div>
         ) : (
           <>
             {activeTab === 'OPD' && <OPDForm inventory={inventory} dispenserName={currentUser.name} refreshData={fetchData} />}
             {activeTab === 'INVENTORY' && <InventoryManager inventory={inventory} refreshData={fetchData} />}
-            {activeTab === 'REPORTS' && <Reports opdRecords={opdRecords} inventory={inventory} inventoryLogs={inventoryLogs} />}
+            {activeTab === 'REPORTS' && <Reports opdRecords={opdRecords} inventory={inventory} inventoryLogs={inventoryLogs} refreshData={fetchData} />}
           </>
         )}
       </main>
@@ -251,7 +250,7 @@ function OPDForm({ inventory, dispenserName, refreshData }) {
         throw new Error(errorData.error || 'Failed to save OPD');
       }
 
-      setMessage('✅ DB Saved: OPD Record Saved & Inventory Deducted!');
+      setMessage('✅ Cloud Saved: OPD Record Saved & Inventory Deducted!');
       setFormData({ patientName: '', empType: 'Company', sapId: '', contractorName: '', symptoms: '' });
       setMedicinesGiven([{ drugId: '', qty: 1 }]);
       await refreshData();
@@ -354,7 +353,7 @@ function OPDForm({ inventory, dispenserName, refreshData }) {
         </div>
 
         <button type="submit" disabled={isSubmitting} className="w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-bold rounded shadow hover:bg-blue-700 hover:shadow-lg transition disabled:opacity-50">
-          {isSubmitting ? 'Saving to Database...' : 'Save OPD Record'}
+          {isSubmitting ? 'Syncing to Cloud...' : 'Save OPD Record'}
         </button>
       </form>
     </div>
@@ -366,7 +365,7 @@ function OPDForm({ inventory, dispenserName, refreshData }) {
 // ==========================================
 function InventoryManager({ inventory, refreshData }) {
   const [newDrug, setNewDrug] = useState({ name: '', stock: '' });
-  const [restockInputs, setRestockInputs] = useState({}); // Track restock values by drug ID
+  const [restockInputs, setRestockInputs] = useState({});
   const [message, setMessage] = useState('');
 
   const handleAddDrug = async (e) => {
@@ -410,7 +409,6 @@ function InventoryManager({ inventory, refreshData }) {
         body: JSON.stringify({ qtyAdded, drugName })
       });
       
-      // Clear input and refresh
       setRestockInputs({ ...restockInputs, [id]: '' });
       setMessage(`📦 Added ${qtyAdded} to ${drugName}!`);
       refreshData();
@@ -511,7 +509,7 @@ function InventoryManager({ inventory, refreshData }) {
 // ==========================================
 // 4. REPORTS COMPONENT
 // ==========================================
-function Reports({ opdRecords, inventory, inventoryLogs }) {
+function Reports({ opdRecords, inventory, inventoryLogs, refreshData }) {
   const getTodayString = () => new Date().toISOString().split('T')[0];
   const [startDate, setStartDate] = useState(getTodayString());
   const [endDate, setEndDate] = useState(getTodayString());
@@ -599,6 +597,22 @@ function Reports({ opdRecords, inventory, inventoryLogs }) {
     downloadCSV(`Current_Inventory_Report`, headers, rows);
   };
 
+  const handleDeleteOPDRecord = async (id, patientName) => {
+    if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete the record for ${patientName}?\n\nThis will delete the record forever and automatically RETURN the dispensed medicines back to the inventory.`)) {
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_URL}/opd/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete record');
+      
+      alert('✅ Record deleted successfully. Inventory has been restored!');
+      refreshData();
+    } catch (err) {
+      alert(`❌ Error deleting record: ${err.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 items-end">
@@ -632,6 +646,7 @@ function Reports({ opdRecords, inventory, inventoryLogs }) {
                   <th className="p-2 border-b">Date</th>
                   <th className="p-2 border-b">Patient</th>
                   <th className="p-2 border-b">Meds Given</th>
+                  <th className="p-2 border-b text-right">Delete</th>
                 </tr>
               </thead>
               <tbody>
@@ -642,9 +657,18 @@ function Reports({ opdRecords, inventory, inventoryLogs }) {
                       {r.patient_name} <br/><span className="text-[10px] text-slate-500">{r.emp_type}</span>
                     </td>
                     <td className="p-2 text-slate-600">{r.medicines.map(m => `${m.name}(${m.qty})`).join(', ')}</td>
+                    <td className="p-2 text-right">
+                      <button 
+                        onClick={() => handleDeleteOPDRecord(r.id, r.patient_name)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded transition"
+                        title="Delete record & restore inventory"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
-                {filteredRecords.length === 0 && <tr><td colSpan="3" className="p-4 text-center text-slate-500">No records found.</td></tr>}
+                {filteredRecords.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-slate-500">No records found.</td></tr>}
               </tbody>
             </table>
           </div>
