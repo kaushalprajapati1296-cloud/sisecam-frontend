@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* A quick test to ensure this file is actually loading */
+html, body {
+background-color: #f8fafc;
+}
