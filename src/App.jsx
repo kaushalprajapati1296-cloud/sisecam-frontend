@@ -643,7 +643,8 @@ function Reports({ opdRecords, inventory, inventoryLogs, refreshData }) {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100 sticky top-0">
                 <tr>
-                  <th className="p-2 border-b">Date</th>
+                  <th className="p-2 border-b">Date & Time</th>
+                  <th className="p-2 border-b">Shift</th>
                   <th className="p-2 border-b">Patient</th>
                   <th className="p-2 border-b">Meds Given</th>
                   <th className="p-2 border-b text-right">Delete</th>
@@ -652,7 +653,11 @@ function Reports({ opdRecords, inventory, inventoryLogs, refreshData }) {
               <tbody>
                 {filteredRecords.map(r => (
                   <tr key={r.id} className="border-b hover:bg-slate-50">
-                    <td className="p-2 whitespace-nowrap">{new Date(r.date).toLocaleDateString()}</td>
+                    <td className="p-2 whitespace-nowrap">
+                      {new Date(r.date).toLocaleDateString()}<br/>
+                      <span className="text-[10px] text-slate-500">{new Date(r.date).toLocaleTimeString()}</span>
+                    </td>
+                    <td className="p-2 whitespace-nowrap text-xs font-semibold text-slate-600">{r.shift?.split(' ')[0] || '-'}</td>
                     <td className="p-2 font-medium">
                       {r.patient_name} <br/><span className="text-[10px] text-slate-500">{r.emp_type}</span>
                     </td>
